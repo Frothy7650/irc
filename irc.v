@@ -35,8 +35,11 @@ pub fn (mut irc_conn IrcConn) writeline(input string) !
         }
       }
       "part" {
-        if parts.len > 1 {
+        if parts.len == 1 {
           irc_conn.tcp.write("PART ${irc_conn.channel}\r\n".bytes())!
+          irc_conn.channel = ""
+        } else if parts.len > 1 {
+          irc_conn.tcp.write("PART ${parts[1]}\r\n".bytes())!
           irc_conn.channel = ""
         }
       }
