@@ -1,4 +1,4 @@
-module irc
+module vircc
 
 import sync
 import net

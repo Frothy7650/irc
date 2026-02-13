@@ -1,6 +1,6 @@
 module main
 
-import irc
+import vircc
 
 fn main()
 {
