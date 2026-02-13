@@ -1,0 +1,2 @@
+## IRC
+Simple IRC library.
