@@ -40,4 +40,5 @@ pub mut:
   nick        string
   channel     string
   is_running  bool
+  is_terminal bool
 }

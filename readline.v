@@ -45,28 +45,54 @@ pub fn (mut irc_conn IrcConn) readline() !string {
 
   // Build human-readable output
   mut output := ""
-  if command == "PRIVMSG" && params.len > 0 {
+  if irc_conn.is_terminal == true {
+    if command == "PRIVMSG" && params.len > 0 {
+      target := params[0]
+      sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
+      output = chalk.green("<${sender}:${target}> ${trailing}")
+    } else if command == "NOTICE" && params.len > 0 {
+      _ := params[0]
+      sender := if prefix.len > 0 { prefix } else { "server" }
+      output = chalk.light_red("-${sender}- ${trailing}")
+    } else if command in ["JOIN", "PART", "QUIT"] {
+      user := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
+      ch := if params.len > 0 { params[0] } else { trailing }
+      output = chalk.magenta("${user} ${command} ${ch}")
+    } else if command.len == 3 && command[0].is_digit() {
+      // numeric replies
+      output = chalk.dark_gray("-${command}- ${trailing}")
+    } else if command == "PING" {
+      irc_conn.tcp.write("PONG :${trailing}".bytes())!
+      output = chalk.blue("Server pinged us, responding with: PONG :${trailing}")
+    } else if command == "PONG" {
+    } else {
+      // fallback
+      output = chalk.red("${line}")
+    }
+  } else if irc_conn.is_terminal == false {
+    if command == "PRIVMSG" && params.len > 0 {
     target := params[0]
     sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
-    output = chalk.green("<${sender}:${target}> ${trailing}")
+    output = "<${sender}:${target}> ${trailing}"
   } else if command == "NOTICE" && params.len > 0 {
     _ := params[0]
     sender := if prefix.len > 0 { prefix } else { "server" }
-    output = chalk.light_red("-${sender}- ${trailing}")
+    output = "-${sender}- ${trailing}"
   } else if command in ["JOIN", "PART", "QUIT"] {
     user := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
     ch := if params.len > 0 { params[0] } else { trailing }
-    output = chalk.magenta("${user} ${command} ${ch}")
+    output = "${user} ${command} ${ch}"
   } else if command.len == 3 && command[0].is_digit() {
     // numeric replies
-    output = chalk.dark_gray("-${command}- ${trailing}")
+    output = "-${command}- ${trailing}"
   } else if command == "PING" {
     irc_conn.tcp.write("PONG :${trailing}".bytes())!
-    output = chalk.blue("Server pinged us, responding with: PONG :${trailing}")
+    output = "Server pinged us, responding with: PONG :${trailing}"
   } else if command == "PONG" {
   } else {
     // fallback
-    output = chalk.red("${line}")
+    output = "${line}"
+  }
   }
 
   return output
