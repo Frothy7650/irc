@@ -45,7 +45,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
 
   // Build human-readable output
   mut output := ""
-  if irc_conn.is_terminal == true {
+  if irc_conn.color == true {
     if command == "PRIVMSG" && params.len > 0 {
       target := params[0]
       sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
@@ -69,7 +69,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
       // fallback
       output = chalk.red("${line}")
     }
-  } else if irc_conn.is_terminal == false {
+  } else if irc_conn.color == false {
     if command == "PRIVMSG" && params.len > 0 {
     target := params[0]
     sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
