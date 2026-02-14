@@ -14,7 +14,7 @@ pub fn (mut irc_conn IrcConn) writeline(input string) !
         }
       }
       "part" {
-        if parts.len == 2 {
+        if parts.len == 1 {
           irc_conn.tcp.write("PART ${irc_conn.channel} :Goodbye\r\n".bytes())!
         } else if parts.len <= 3 {
           mut channel := ""

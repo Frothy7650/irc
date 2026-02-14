@@ -56,7 +56,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
   } else if command in ["JOIN", "PART", "QUIT"] {
     user := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
     ch := if params.len > 0 { params[0] } else { trailing }
-    output = chalk.dark_gray("${user} ${command} ${ch}")
+    output = chalk.magenta("${user} ${command} ${ch}")
   } else if command.len == 3 && command[0].is_digit() {
     // numeric replies
     output = chalk.dark_gray("-${command}- ${trailing}")
