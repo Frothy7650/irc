@@ -60,6 +60,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
     output = "-${command}- ${trailing}"
   } else if command == "PING" {
     irc_conn.tcp.write("PONG :${trailing}".bytes())!
+    output = "Server pinged us, responding with: PONG :${trailing}"
   } else if command == "PONG" {
   } else {
     // fallback
