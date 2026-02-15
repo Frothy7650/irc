@@ -84,7 +84,7 @@ pub fn (mut irc_conn IrcConn) readline() !string {
     output = "${user} ${command} ${ch}"
   } else if command.len == 3 && command[0].is_digit() {
     // numeric replies
-    output = "-${command}- ${trailing}"
+    output = "-Server- ${trailing}"
   } else if command == "PING" {
     irc_conn.tcp.write("PONG :${trailing}".bytes())!
     output = "Server pinged us, responding with: PONG :${trailing}"
