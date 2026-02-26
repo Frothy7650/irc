@@ -1,99 +1,127 @@
 module vircc
 
 import kutlayozger.chalk
+import pcre
 
 pub fn (mut irc_conn IrcConn) readline() !string {
-  // Read a single line from the TCP connection
   raw_line := irc_conn.tcp.read_line()
   line := raw_line.trim_space()
+  if line.len == 0 { return '' }
 
-  if line.len == 0 {
-    return "" // ignore empty messages
+  // ================= IRC PARSE =================
+  mut prefix := ''
+  mut command := ''
+  mut target := ''
+  mut trailing := ''
+
+  // Regex:
+  // 1 = prefix (optional)
+  // 2 = command
+  // 3 = middle params (optional)
+  // 4 = trailing (optional)
+  regex_pattern := r'^(?::([^ ]+)\s+)?([A-Za-z]+|\d{3})(?:\s([^:]+))?(?:\s:(.*))?$'
+
+  r := pcre.new_regex(regex_pattern, 0) or {
+    return error('regex compile failed')
   }
 
-  mut prefix := ""
-  mut command := ""
-  mut params := []string{}
-  mut trailing := ""
+  if m := r.match_str(line, 0, 0) {
+    prefix   = m.get(1) or { '' }
+    command  = m.get(2) or { '' }
 
-  mut rest := line
+    middle   := m.get(3) or { '' }
+    trailing = m.get(4) or { '' }
 
-  // Check for optional prefix
-  if rest.starts_with(":") {
-    space_idx := rest.index_after(" ", 1) or { return line } // malformed, return raw
-    prefix = rest[1..space_idx]
-    rest = rest[space_idx + 1..]
-  }
-
-  // Extract command
-  space_idx := rest.index(" ") or { rest.len }
-  command = rest[..space_idx]
-  rest = if space_idx < rest.len { rest[space_idx + 1..] } else { "" }
-
-  // Extract params & trailing
-  if rest.len > 0 {
-    mut parts := rest.split(" ")
-    for i, p in parts {
-      if p.starts_with(":") {
-        trailing = p[1..] + if i < parts.len - 1 { " " + parts[i + 1..].join(" ") } else { "" }
-        break
-      } else {
-        params << p
+    if middle.len > 0 {
+      parts := middle.split(' ')
+      if parts.len > 0 {
+        target = parts[0]
       }
     }
-  }
-
-  // Build human-readable output
-  mut output := ""
-  if irc_conn.color == true {
-    if command == "PRIVMSG" && params.len > 0 {
-      target := params[0]
-      sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
-      output = chalk.green("<${sender}:${target}> ${trailing}")
-    } else if command == "NOTICE" && params.len > 0 {
-      _ := params[0]
-      sender := if prefix.len > 0 { prefix } else { "server" }
-      output = chalk.light_red("-${sender}- ${trailing}")
-    } else if command in ["JOIN", "PART", "QUIT"] {
-      user := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
-      ch := if params.len > 0 { params[0] } else { trailing }
-      output = chalk.magenta("${user} ${command} ${ch}")
-    } else if command.len == 3 && command[0].is_digit() {
-      // numeric replies
-      output = chalk.dark_gray("-${command}- ${trailing}")
-    } else if command == "PING" {
-      irc_conn.tcp.write("PONG :${trailing}".bytes())!
-      output = chalk.blue("Server pinged us, responding with: PONG :${trailing}")
-    } else if command == "PONG" {
-    } else {
-      // fallback
-      output = chalk.red("${line}")
-    }
-  } else if irc_conn.color == false {
-    if command == "PRIVMSG" && params.len > 0 {
-    target := params[0]
-    sender := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
-    output = "<${sender}:${target}> ${trailing}"
-  } else if command == "NOTICE" && params.len > 0 {
-    _ := params[0]
-    sender := if prefix.len > 0 { prefix } else { "server" }
-    output = "-${sender}- ${trailing}"
-  } else if command in ["JOIN", "PART", "QUIT"] {
-    user := if prefix.len > 0 { prefix.split("!")[0] } else { "unknown" }
-    ch := if params.len > 0 { params[0] } else { trailing }
-    output = "${user} ${command} ${ch}"
-  } else if command.len == 3 && command[0].is_digit() {
-    // numeric replies
-    output = "-Server- ${trailing}"
-  } else if command == "PING" {
-    irc_conn.tcp.write("PONG :${trailing}".bytes())!
-    output = "Server pinged us, responding with: PONG :${trailing}"
-  } else if command == "PONG" {
   } else {
-    // fallback
-    output = "${line}"
-  }
+    return ''
   }
 
-  return output
+  // ================= IRSSI STYLE OUTPUT =================
+
+  // Extract nick from prefix
+  mut nick := prefix
+  if i := nick.index('!') {
+    nick = nick[..i]
+  }
+
+  cnick := if nick.len > 0 { chalk.cyan(nick) } else { '' }
+
+  // ================= PRIVMSG =================
+  if command == 'PRIVMSG' {
+    // CTCP ACTION
+    if trailing.starts_with('\x01ACTION ') && trailing.ends_with('\x01') {
+      action_text := trailing[8..trailing.len - 1]
+      return '* ${chalk.bold(cnick)} ${action_text}'
+    }
+    return '<${cnick}> ${trailing}'
+  }
+
+  // ================= NOTICE =================
+  if command == 'NOTICE' {
+    if nick.len > 0 {
+      return '-${cnick}- ${trailing}'
+    }
+    return '-!- ${trailing}'
+  }
+
+  // ================= JOIN =================
+  if command == 'JOIN' {
+    return '-!- ${cnick} has joined ${if trailing.len > 0 { trailing } else {target} }'
+  }
+
+  // ================= PART =================
+  if command == 'PART' {
+    if trailing.len > 0 {
+      return '-!- ${cnick} has left ${target} (${trailing})'
+    }
+    return '-!- ${cnick} has left ${target}'
+  }
+
+  // ================= QUIT =================
+  if command == 'QUIT' {
+    if trailing.len > 0 {
+      return '-!- ${cnick} has quit (${trailing})'
+    }
+    return '-!- ${cnick} has quit'
+  }
+
+  // ================= NICK =================
+  if command == 'NICK' {
+    newnick := if trailing.len > 0 { trailing } else { target }
+    return '-!- ${cnick} is now known as ${chalk.cyan(newnick)}'
+  }
+
+  // ================= KICK =================
+  if command == 'KICK' {
+    parts := line.split(' ')
+    if parts.len >= 4 {
+      victim := parts[3]
+      mut msg := '-!- ${cnick} kicked ${chalk.cyan(victim)} from ${chalk.cyan(target)}'
+      if trailing.len > 0 {
+        msg += ' (${trailing})'
+      }
+      return msg
+    }
+  }
+
+  // ================= NUMERICS =================
+  if command.len == 3 && command[0].is_digit() {
+    if trailing.len > 0 {
+      return '-!- ${trailing}'
+    }
+    return ''
+  }
+
+  // ================= FALLBACK =================
+  if trailing.len > 0 {
+    return '-!- ${command} ${trailing}'
+  }
+
+  return ''
 }
