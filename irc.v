@@ -2,9 +2,9 @@ module vircc
 
 import net
 
-pub fn connect(ip string, port string, nick string) IrcConn
+pub fn connect(ip string, port string, nick string) !IrcConn
 {
-  mut conn := net.dial_tcp("${ip}:${port}") or { exit(1) }
+  mut conn := net.dial_tcp("${ip}:${port}")!
   $if debug { println("${IrcConn{ tcp: conn nick: nick }}") }
   $if debug { println("${ip}:${port}") }
   return IrcConn{

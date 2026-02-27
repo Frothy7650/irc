@@ -1,6 +1,26 @@
-## IRC
+## VIRCC
 Simple IRC library.
 
+## Features
+```
+conn.connect(ip string, port string, nick string) !IrcConn
+conn.login() !
+conn.writeline(input string) !
+conn.readline() !string
+conn.disconnect() !
+
+pub struct IrcConn {
+pub mut:
+  tcp         net.TcpConn
+  nick        string
+  channel     string
+  is_running  bool
+  color       bool // Enable for ascii color support
+}
+```
+
+Very incomplete, does not yet support all commands.
+If you want any features, open an issue.
 
 ## Usage
 Here is a minimal example of how do use vircc
