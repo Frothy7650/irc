@@ -33,7 +33,7 @@ fn main()
   ip := os.input("IP: ")
   nick := os.input("Nick: ")
 
-  mut conn := vircc.connect(ip, "6667", nick)
+  mut conn := vircc.connect(ip, "6667", nick)!
   conn.color = true
   conn.login()!
 
