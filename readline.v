@@ -1,6 +1,6 @@
 module vircc
 import kutlayozger.chalk
-import pcre
+import regex.pcre
 
 pub fn (mut irc_conn IrcConn) readline() !string {
   raw_line := irc_conn.tcp.read_line()
@@ -47,12 +47,17 @@ pub fn (mut irc_conn IrcConn) readline() !string {
   }
 
   cnick := if nick.len > 0 { chalk.cyan(nick) } else { "" }
-  
+
+  // === WITH COLOR ===
   if irc_conn.color {
     if !command.is_int() {
       match command {
+        "NOTICE" {
+          if nick.len > 0 { return chalk.underline("-${cnick}- ${trailing}") }
+          return chalk.underline("${trailing}")
+        }
+
         "PRIVMSG" {
-          // CTCP ACTION
           if trailing.starts_with("\x01ACTION ") && trailing.ends_with("\x01") {
             action_text := trailing[8..trailing.len - 1]
             return "* ${chalk.bold(cnick)} ${action_text}"
@@ -60,41 +65,27 @@ pub fn (mut irc_conn IrcConn) readline() !string {
           return chalk.bold("<${cnick}> ${trailing}")
         }
 
-        "NOTICE" {
-          if nick.len > 0 {
-            return "-${cnick}- ${trailing}"
-          }
-          return "${trailing}"
+        "PING" {
+          irc_conn.tcp.write("PONG ${trailing}".bytes())!
+          return ""
+        }
+
+        "PONG" {
+          if trailing.len > 0 { return "${trailing} responded to ping" }
         }
 
         "JOIN" {
-          return "${cnick} has joined ${if trailing.len > 0 { trailing } else {target} }"
+          return "${cnick} has joined ${if trailing.len > 0 { trailing } else { target } }"
         }
 
         "PART" {
-          if trailing.len > 0 {
-            return "${cnick} has left ${target} (${trailing})"
-          }
+          if trailing.len > 0 { return "${cnick} has left ${target} (${trailing})" }
           return "${cnick} has left ${target}"
         }
 
         "QUIT" {
-          if trailing.len > 0 {
-            return "${cnick} has quit (${trailing})"
-          }
+          if trailing.len > 0 { return "${cnick} has quit (${trailing})" }
           return "${cnick} has quit"
-        }
-
-        "KICK" {
-          parts := line.split(" ")
-          if parts.len >= 4 {
-            victim := parts[3]
-            mut msg := "${cnick} kicked ${chalk.cyan(victim)} from ${chalk.cyan(target)}"
-            if trailing.len > 0 {
-              msg += " (${trailing})"
-            }
-            return msg
-          }
         }
 
         "NICK" {
@@ -102,9 +93,22 @@ pub fn (mut irc_conn IrcConn) readline() !string {
           return "${cnick} is now known as ${chalk.cyan(newnick)}"
         }
 
-        "PING" {
-          irc_conn.tcp.write("PONG ${trailing}".bytes())!
-          return ""
+        "KICK" {
+          parts := line.split(" ")
+          if parts.len >= 4 {
+            victim := parts[3]
+            mut msg := "${cnick} kicked ${chalk.cyan(victim)} from ${chalk.cyan(target)}"
+            if trailing.len > 0 { msg += " (${trailing})" }
+            return msg
+          }
+        }
+
+        "MODE" {
+          return "${cnick} changed mode: ${trailing}"
+        }
+
+        "TOPIC" {
+          return "${cnick} set topic for ${target}: ${trailing}"
         }
 
         else {
@@ -113,27 +117,40 @@ pub fn (mut irc_conn IrcConn) readline() !string {
       }
     } else if command.is_int() {
       match command {
+        "001", "002", "003", "004", "005" { return trailing }
+        "200", "201", "202", "203", "204", "205", "206", "207", "208", "209" { return chalk.dim("[${command}] ${trailing}") }
+        "251","252","253","254","255" { return chalk.dim("[${command}] ${trailing}") }
+        "301","305","306","311","312","313","317","318","319" { return chalk.dim("[${command}] ${trailing}") }
+        "322","323","324","331","332","341","346","347","348","349" { return chalk.dim("[${command}] ${trailing}") }
         "353" {
           names := trailing.split_by_space()
           mut ret := ""
           for name in names { ret += "[${name}] " }
           return "Users: ${ret}"
         }
-        
-        "366" {
-          return "userlist complete"
+        "366" { return "userlist complete" }
+        "372","375","376" { return chalk.dim("${trailing}") }
+        "421","422","431","432","433","436","441","442","443","451","461","462","463","464","465","467","471","473","475","481","482","501","502" {
+          return chalk.red("[${command}] ${trailing}")
         }
-
-        else {
-          return chalk.dim("[${command}] ${trailing}")
-        }
+        else { return chalk.dim("[${command}] ${trailing}") }
       }
     }
-  } else {
+  }
+
+
+  // === WITHOUT COLOR ===
+
+
+  else {
     if !command.is_int() {
       match command {
+        "NOTICE" {
+          if nick.len > 0 { return "-${cnick}- ${trailing}" }
+          return "${trailing}"
+        }
+
         "PRIVMSG" {
-          // CTCP ACTION
           if trailing.starts_with("\x01ACTION ") && trailing.ends_with("\x01") {
             action_text := trailing[8..trailing.len - 1]
             return "* ${cnick} ${action_text}"
@@ -141,73 +158,41 @@ pub fn (mut irc_conn IrcConn) readline() !string {
           return "<${cnick}> ${trailing}"
         }
 
-        "NOTICE" {
-          if nick.len > 0 {
-            return "-${cnick}- ${trailing}"
-          }
-          return "${trailing}"
-        }
-
-        "JOIN" {
-          return "${cnick} has joined ${if trailing.len > 0 { trailing } else {target} }"
-        }
-
-        "PART" {
-          if trailing.len > 0 {
-            return "${cnick} has left ${target} (${trailing})"
-          }
-          return "${cnick} has left ${target}"
-        }
-
-        "QUIT" {
-          if trailing.len > 0 {
-            return "${cnick} has quit (${trailing})"
-          }
-          return "${cnick} has quit"
-        }
-
+        "JOIN" { return "${cnick} has joined ${if trailing.len > 0 { trailing } else { target } }" }
+        "PART" { if trailing.len > 0 { return "${cnick} has left ${target} (${trailing})" } return "${cnick} has left ${target}" }
+        "QUIT" { if trailing.len > 0 { return "${cnick} has quit (${trailing})" } return "${cnick} has quit" }
+        "NICK" { newnick := if trailing.len > 0 { trailing } else { target }; return "${cnick} is now known as ${newnick}" }
         "KICK" {
           parts := line.split(" ")
           if parts.len >= 4 {
             victim := parts[3]
             mut msg := "${cnick} kicked ${victim} from ${target}"
-            if trailing.len > 0 {
-              msg += " (${trailing})"
-            }
+            if trailing.len > 0 { msg += " (${trailing})" }
             return msg
           }
         }
-
-        "NICK" {
-          newnick := if trailing.len > 0 { trailing } else { target }
-          return "${cnick} is now known as ${newnick}"
-        }
-
-        "PING" {
-          irc_conn.tcp.write("PONG ${trailing}".bytes())!
-          return ""
-        }
-
-        else {
-          return "-!- [${command}] ${trailing}"
-        }
+        "MODE" { return "${cnick} changed mode: ${trailing}" }
+        "TOPIC" { return "${cnick} set topic for ${target}: ${trailing}" }
+        "PING" { irc_conn.tcp.write("PONG ${trailing}".bytes())!; return "" }
+        else { return "-!- [${command}] ${trailing}" }
       }
     } else if command.is_int() {
       match command {
+        "001","002","003","004","005" { return trailing }
         "353" {
           names := trailing.split_by_space()
           mut ret := ""
           for name in names { ret += "[${name}] " }
           return "Users: ${ret}"
         }
-        
-        "366" {
-          return "userlist complete"
-        }
-
-        else {
+        "366" { return "userlist complete" }
+        "200", "201", "202", "203", "204", "205", "206", "207", "208", "209","251","252","253","254","255","301","305","306","311","312","313","317","318","319","322","323","324","331","332","341","346","347","348","349","372","375","376" {
           return "[${command}] ${trailing}"
         }
+        "421","422","431","432","433","436","441","442","443","451","461","462","463","464","465","467","471","473","475","481","482","501","502" {
+          return "[${command}] ${trailing}"
+        }
+        else { return "[${command}] ${trailing}" }
       }
     }
   }
